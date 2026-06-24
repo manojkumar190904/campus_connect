@@ -9,6 +9,9 @@ declare module "next-auth" {
       campusId: string;
       role: CampusRole;
       department?: string;
+      semester?: string;
+      section?: string;
+      isEmailVerified?: boolean;
       mustChangePassword?: boolean;
     } & DefaultSession["user"];
   }
@@ -19,6 +22,9 @@ declare module "next-auth/jwt" {
     campusId?: string;
     role?: CampusRole;
     department?: string;
+    semester?: string;
+    section?: string;
+    isEmailVerified?: boolean;
     mustChangePassword?: boolean;
   }
 }

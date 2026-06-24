@@ -17,12 +17,14 @@ function sessionUserFromCampusUser(user: any) {
     department: user.department,
     semester: user.semester,
     section: user.section,
+    isEmailVerified: Boolean(user.isEmailVerified),
     mustChangePassword: Boolean(user.mustChangePassword)
   } as any;
 }
 
 export const authOptions: NextAuthOptions = {
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
+  jwt: { maxAge: 7 * 24 * 60 * 60 },
   secret: getAuthSecret(),
   pages: { signIn: "/login" },
   providers: [
@@ -69,22 +71,26 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     jwt({ token, user }) {
       if (user) {
+        token.email = (user as any).email;
         token.role = (user as any).role;
         token.campusId = (user as any).campusId;
         token.department = (user as any).department;
         token.semester = (user as any).semester;
         token.section = (user as any).section;
+        token.isEmailVerified = (user as any).isEmailVerified;
         token.mustChangePassword = (user as any).mustChangePassword;
       }
       return token;
     },
     session({ session, token }) {
       if (session.user) {
+        (session.user as any).email = token.email;
         (session.user as any).role = token.role;
         (session.user as any).campusId = token.campusId;
         (session.user as any).department = token.department;
         (session.user as any).semester = token.semester;
         (session.user as any).section = token.section;
+        (session.user as any).isEmailVerified = token.isEmailVerified;
         (session.user as any).mustChangePassword = token.mustChangePassword;
       }
       return session;

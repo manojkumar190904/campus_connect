@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { motion } from "framer-motion";
 import { canPerformAction, getRoleHome, getRoleMenu, type RoleMenuItem } from "@/lib/role-access";
 import {
@@ -27,7 +27,9 @@ import {
   FileText,
   GraduationCap,
   Home,
+  KeyRound,
   LibraryBig,
+  LogOut,
   MapPin,
   Megaphone,
   MessageSquareText,
@@ -81,6 +83,8 @@ type CampusSessionUser = {
   department?: string;
   semester?: string;
   section?: string;
+  email?: string;
+  isEmailVerified?: boolean;
   mustChangePassword?: boolean;
 };
 type ModalState =
@@ -683,10 +687,13 @@ export function Sidebar() {
     ? getRoleMenu(user.role).map((item) => ({ ...item, icon: resolveMenuIcon(item) }))
     : activePortal?.nav ?? [];
   const initials = (user?.name ?? user?.campusId ?? "CC").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const logout = () => {
+    void signOut({ callbackUrl: "/login" });
+  };
 
   return (
     <aside className="hidden h-full w-[260px] shrink-0 flex-col border-r border-slate-200 bg-white px-4 py-5 lg:flex">
-      <Link href="/dashboard" className="mb-7 flex items-center gap-3 px-2">
+      <Link href="/" className="mb-7 flex items-center gap-3 px-2">
         <span className="grid size-11 place-items-center rounded-[18px] bg-gradient-to-br from-[#4f46e5] to-[#6366f1] text-white">
           <GraduationCap size={23} />
         </span>
@@ -724,6 +731,10 @@ export function Sidebar() {
             <p className="truncate text-xs font-bold text-slate-500">{user?.role?.replace(/_/g, " ") ?? activePortal?.title ?? "CampusOS"}</p>
           </div>
         </div>
+        <button onClick={logout} className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 transition hover:border-rose-100 hover:bg-rose-50 hover:text-rose-600">
+          <LogOut size={16} />
+          Logout
+        </button>
       </div>
     </aside>
   );
@@ -738,6 +749,9 @@ export function Topbar() {
   const [toast, setToast] = useState("");
   const [unread, setUnread] = useState(0);
   const initials = (user?.name ?? user?.campusId ?? "CC").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const logout = () => {
+    void signOut({ callbackUrl: "/login" });
+  };
 
   useEffect(() => {
     fetch("/api/notifications")
@@ -783,6 +797,10 @@ export function Topbar() {
             <p className="text-xs font-bold text-slate-500">{user ? `${user.campusId} • ${user.role.replace(/_/g, " ")}` : "CampusOS"}</p>
           </div>
         </div>
+        <button onClick={logout} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 shadow-sm transition hover:border-rose-100 hover:bg-rose-50 hover:text-rose-600 sm:px-4">
+          <LogOut size={16} />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
       </div>
     </header>
   );
@@ -1388,10 +1406,21 @@ function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [profile, setProfile] = useState({ name: "Rahul Sharma", email: "rahul@campus.test" });
+  const user = useCurrentUser();
+
+  useEffect(() => {
+    if (user) {
+      setProfile({ name: user.name ?? "", email: user.email ?? "" });
+    }
+  }, [user]);
 
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2200);
+  }
+
+  function logout() {
+    void signOut({ callbackUrl: "/login" });
   }
 
   return (
@@ -1433,6 +1462,20 @@ function SettingsScreen() {
                 <p className="text-sm font-bold text-slate-500">{darkMode ? "Preview enabled" : "Preview disabled"}</p>
               </div>
               <Button variant="outline" onClick={() => { setDarkMode((value) => !value); notify("Theme preview updated"); }}>{darkMode ? "Light" : "Dark"}</Button>
+            </div>
+          </div>
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]">
+            <h2 className="text-xl font-black text-slate-950">Account</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">{user?.campusId ?? "Campus ID"} • {user?.role?.replace(/_/g, " ") ?? "Campus user"}</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link href="/settings/change-password" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50 active:translate-y-0">
+                <KeyRound size={16} />
+                Change Password
+              </Link>
+              <Button variant="outline" onClick={logout}>
+                <LogOut size={16} />
+                Logout
+              </Button>
             </div>
           </div>
         </div>
@@ -2771,14 +2814,18 @@ export function ChangePasswordPage() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const response = await fetch("/api/auth/change-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    const data = await response.json();
-    if (!response.ok) {
-      setToast(data.message || "Unable to change password");
-      return;
+    try {
+      const response = await fetch("/api/auth/change-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const data = await response.json();
+      if (!response.ok) {
+        setToast(data.message || "Unable to change password");
+        return;
+      }
+      setToast("Password changed");
+      router.push(data.redirectTo || "/dashboard");
+    } catch {
+      setToast("Unable to change password");
     }
-    setToast("Password changed");
-    router.push(data.redirectTo || "/dashboard");
   }
 
   return (
@@ -2790,6 +2837,149 @@ export function ChangePasswordPage() {
         <input value={form.newPassword} onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} className="mt-6 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="New password" type="password" />
         <input value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} className="mt-3 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Confirm password" type="password" />
         <Button type="submit" className="mt-5 w-full">Update Password</Button>
+      </form>
+    </main>
+  );
+}
+
+export function OnboardingEmailPage() {
+  const router = useRouter();
+  const [toast, setToast] = useState("");
+  const [user, setUser] = useState<CampusSessionUser | null>(null);
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [demoOtp, setDemoOtp] = useState("");
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load profile")))
+      .then((data) => {
+        setUser(data.user ?? null);
+        setEmail(data.user?.email ?? "");
+      })
+      .catch((error) => setToast(error.message));
+  }, []);
+
+  async function sendOtp(successMessage = "Demo OTP generated") {
+    try {
+      const response = await fetch("/api/onboarding/email/send-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const data = await response.json();
+      if (!response.ok) {
+        setToast(data.message || "Unable to send OTP");
+        return;
+      }
+      setDemoOtp(data.demoOtp);
+      setOtp(data.demoOtp);
+      setToast(successMessage);
+    } catch {
+      setToast("Unable to send OTP");
+    }
+  }
+
+  async function verifyOtp() {
+    try {
+      const response = await fetch("/api/onboarding/email/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ otp }) });
+      const data = await response.json();
+      if (!response.ok) {
+        setToast(data.message || "Unable to verify email");
+        return;
+      }
+      const onboardingPassword = window.sessionStorage.getItem("campusOnboardingPassword");
+      if (user?.campusId && onboardingPassword) {
+        const result = await signIn("credentials", { campusId: user.campusId, password: onboardingPassword, redirect: false });
+        if (result?.error) {
+          setToast("Email verified. Please login again to continue.");
+          window.sessionStorage.removeItem("campusOnboardingPassword");
+          window.setTimeout(() => { void signOut({ callbackUrl: "/login" }); }, 900);
+          return;
+        }
+      } else {
+        setToast("Email verified. Please login again to continue.");
+        window.setTimeout(() => { void signOut({ callbackUrl: "/login" }); }, 900);
+        return;
+      }
+      setToast("Email verified");
+      router.push(data.user?.mustChangePassword ? "/onboarding/change-password" : getRoleHome(data.user?.role));
+    } catch {
+      setToast("Unable to verify email");
+    }
+  }
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,#f5f3ff_0%,#ffffff_50%,#eef2ff_100%)] p-5">
+      <Toast message={toast} />
+      <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-7 shadow-[0_30px_80px_-44px_rgba(79,70,229,0.75)]">
+        <div className="mb-6 flex items-center gap-3 text-xl font-black text-slate-950">
+          <span className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-[#4f46e5] to-[#6366f1] text-white"><GraduationCap size={22} /></span>
+          CampusOS
+        </div>
+        <h1 className="text-3xl font-black text-slate-950">Verify Email</h1>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Complete email verification before opening your campus portal.</p>
+        <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">
+          <p>Name: {user?.name ?? "Loading..."}</p>
+          <p>Campus ID: {user?.campusId ?? "Loading..."}</p>
+        </div>
+        <div className="mt-5 grid gap-3">
+          <input value={email} onChange={(event) => setEmail(event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Email address" type="email" />
+          <Button onClick={() => { void sendOtp("Email saved. Demo OTP generated"); }}>Save Email</Button>
+          <Button variant="outline" onClick={() => { void sendOtp(); }}>Send Verification OTP</Button>
+          {demoOtp ? <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-black text-emerald-700">Demo OTP: {demoOtp}</div> : null}
+          <input value={otp} onChange={(event) => setOtp(event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Enter OTP" />
+          <Button variant="outline" onClick={() => { void verifyOtp(); }}>Verify Email</Button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export function OnboardingChangePasswordPage() {
+  const router = useRouter();
+  const [toast, setToast] = useState("");
+  const [form, setForm] = useState({ newPassword: "", confirmPassword: "" });
+  const [campusId, setCampusId] = useState("");
+
+  useEffect(() => {
+    fetch("/api/me")
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => setCampusId(data?.user?.campusId ?? ""))
+      .catch(() => undefined);
+  }, []);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const response = await fetch("/api/onboarding/change-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const data = await response.json();
+      if (!response.ok) {
+        setToast(data.message || "Unable to change password");
+        return;
+      }
+      if (campusId) {
+        const result = await signIn("credentials", { campusId, password: form.newPassword, redirect: false });
+        if (result?.error) {
+          setToast("Password changed. Please login again to continue.");
+          window.sessionStorage.removeItem("campusOnboardingPassword");
+          window.setTimeout(() => { void signOut({ callbackUrl: "/login" }); }, 900);
+          return;
+        }
+      }
+      window.sessionStorage.removeItem("campusOnboardingPassword");
+      setToast("Password changed");
+      router.push(data.redirectTo || getRoleHome(data.user?.role));
+    } catch {
+      setToast("Unable to change password");
+    }
+  }
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,#f5f3ff_0%,#ffffff_50%,#eef2ff_100%)] p-5">
+      <Toast message={toast} />
+      <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-[0_30px_80px_-44px_rgba(79,70,229,0.75)]">
+        <h1 className="text-3xl font-black text-slate-950">Set Password</h1>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Create a strong password to finish onboarding.</p>
+        <input value={form.newPassword} onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} className="mt-6 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="New password" type="password" />
+        <input value={form.confirmPassword} onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} className="mt-3 h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Confirm password" type="password" />
+        <Button type="submit" className="mt-5 w-full">Finish Onboarding</Button>
       </form>
     </main>
   );
@@ -2813,43 +3003,54 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
       return;
     }
 
-    const result = await signIn("credentials", { campusId: normalizedCampusId, password, redirect: false });
-    if (result?.error) {
-      const error = decodeURIComponent(result.error);
-      setToast(error.includes("MongoDB not connected") ? "MongoDB not connected" : "Invalid Campus ID or password. Seed demo users, then use Campus@123.");
-      return;
-    }
-    if (!result?.ok) {
+    try {
+      const result = await signIn("credentials", { campusId: normalizedCampusId, password, redirect: false });
+      if (result?.error) {
+        const error = decodeURIComponent(result.error);
+        setToast(error.includes("MongoDB not connected") ? "MongoDB not connected" : "Invalid Campus ID or password. Seed demo users, then use Campus@123.");
+        return;
+      }
+      if (!result?.ok) {
+        setToast("Unable to sign in. Please try again.");
+        return;
+      }
+      const response = await fetch("/api/me");
+      if (!response.ok) {
+        setToast("Signed in, but profile could not be loaded. Please refresh.");
+        return;
+      }
+      const data = await response.json();
+      const signedInUser = data.user as CampusSessionUser | undefined;
+      if (!signedInUser?.role) {
+        setToast("Signed in, but role could not be loaded. Please refresh.");
+        return;
+      }
+      const needsEmailOnboarding = !signedInUser.email || !signedInUser.isEmailVerified;
+      const needsPasswordOnboarding = Boolean(signedInUser.mustChangePassword);
+      if (needsEmailOnboarding || needsPasswordOnboarding) {
+        window.sessionStorage.setItem("campusOnboardingPassword", password);
+      } else {
+        window.sessionStorage.removeItem("campusOnboardingPassword");
+      }
+      if (needsEmailOnboarding) {
+        router.push("/onboarding/email");
+        return;
+      }
+      if (needsPasswordOnboarding) {
+        router.push("/onboarding/change-password");
+        return;
+      }
+      router.push(getRoleHome(signedInUser.role));
+    } catch {
       setToast("Unable to sign in. Please try again.");
-      return;
     }
-    const response = await fetch("/api/me");
-    if (!response.ok) {
-      setToast("Signed in, but profile could not be loaded. Please refresh.");
-      return;
-    }
-    const data = await response.json();
-    if (data.user?.mustChangePassword) {
-      router.push("/change-password");
-      return;
-    }
-    const routes: Record<string, string> = {
-      student: "/portal/student",
-      faculty: "/portal/faculty",
-      hod: "/portal/hod",
-      principal: "/portal/principal",
-      admin: "/portal/admin",
-      super_admin: "/portal/admin",
-      placement_officer: "/portal/placement"
-    };
-    router.push(routes[data.user?.role] ?? "/dashboard");
   }
 
   return (
     <main className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,#f5f3ff_0%,#ffffff_50%,#eef2ff_100%)] p-5">
       <Toast message={toast} />
       <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-7 shadow-[0_30px_80px_-44px_rgba(79,70,229,0.75)]">
-        <Link href="/dashboard" className="mb-8 flex items-center gap-3 text-xl font-black text-slate-950">
+        <Link href="/" className="mb-8 flex items-center gap-3 text-xl font-black text-slate-950">
           <span className="grid size-11 place-items-center rounded-2xl bg-gradient-to-br from-[#4f46e5] to-[#6366f1] text-white"><GraduationCap size={22} /></span>
           CampusOS
         </Link>
@@ -2858,7 +3059,7 @@ export function AuthPage({ mode }: { mode: "login" | "register" }) {
           {mode === "login" ? "Login to your premium campus SaaS dashboard." : "Join the CampusOS workspace for MCA students."}
         </p>
         <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-bold text-indigo-700">
-          Demo login: MCA2026001 / Campus@123
+          Demo logins: MCA2026001 student, ADM001 admin, FAC2026001 faculty. Password: Campus@123
         </div>
         {mode === "register" ? (
           <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold text-amber-700">

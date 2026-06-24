@@ -10,6 +10,10 @@ export type CampusUser = {
   campusId: string;
   name: string;
   email: string;
+  isEmailVerified: boolean;
+  emailVerifiedAt?: string;
+  emailOtp?: string;
+  emailOtpExpiresAt?: string;
   phone?: string;
   passwordHash: string;
   role: CampusRole;
@@ -28,7 +32,7 @@ export type CampusUser = {
   updatedAt: string;
 };
 
-export type PublicCampusUser = Omit<CampusUser, "passwordHash" | "temporaryPassword">;
+export type PublicCampusUser = Omit<CampusUser, "passwordHash" | "temporaryPassword" | "emailOtp">;
 
 const defaultPassword = "Campus@123";
 const now = () => new Date().toISOString();
@@ -42,19 +46,20 @@ function makeUser(input: Omit<CampusUser, "id" | "passwordHash" | "createdAt" | 
     passwordHash: bcrypt.hashSync(password, 10),
     temporaryPassword: input.temporaryPassword ?? password,
     isActive: input.isActive ?? true,
+    isEmailVerified: input.isEmailVerified ?? false,
     createdAt: timestamp,
     updatedAt: timestamp
   };
 }
 
 const seedUsers: CampusUser[] = [
-  makeUser({ campusId: "SUPER001", name: "Super Admin", email: "super@campus.test", role: "super_admin", department: "Administration", designation: "Super Admin", mustChangePassword: false }),
-  makeUser({ campusId: "ADM001", name: "Admin Office", email: "admin@campus.test", role: "admin", department: "Administration", designation: "Admin", mustChangePassword: false }),
-  makeUser({ campusId: "PRI001", name: "Dr. Principal", email: "principal@campus.test", role: "principal", department: "Campus", designation: "Principal", mustChangePassword: false }),
-  makeUser({ campusId: "HOD-CSE-001", name: "Dr. Kavita Menon", email: "hod@campus.test", role: "hod", department: "CSE", designation: "HOD", mustChangePassword: false }),
-  makeUser({ campusId: "FAC2026001", name: "Prof. Arjun Rao", email: "faculty@campus.test", role: "faculty", department: "MCA", designation: "Assistant Professor", mustChangePassword: false }),
-  makeUser({ campusId: "PLC001", name: "Placement Officer", email: "placement@campus.test", role: "placement_officer", department: "Placement Cell", designation: "Placement Officer", mustChangePassword: false }),
-  makeUser({ campusId: "MCA2026001", name: "Rahul Sharma", email: "rahul@campus.test", role: "student", department: "MCA", semester: "2", section: "A", mustChangePassword: false })
+  makeUser({ campusId: "SUPER001", name: "Super Admin", email: "super@campus.test", role: "super_admin", department: "Administration", designation: "Super Admin", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "ADM001", name: "Admin Office", email: "admin@campus.test", role: "admin", department: "Administration", designation: "Admin", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "PRI001", name: "Dr. Principal", email: "principal@campus.test", role: "principal", department: "Campus", designation: "Principal", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "HOD-CSE-001", name: "Dr. Kavita Menon", email: "hod@campus.test", role: "hod", department: "CSE", designation: "HOD", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "FAC2026001", name: "Prof. Arjun Rao", email: "faculty@campus.test", role: "faculty", department: "MCA", designation: "Assistant Professor", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "PLC001", name: "Placement Officer", email: "placement@campus.test", role: "placement_officer", department: "Placement Cell", designation: "Placement Officer", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "MCA2026001", name: "Rahul Sharma", email: "", role: "student", department: "MCA", semester: "2", section: "A", isEmailVerified: false, mustChangePassword: true })
 ];
 
 declare global {
@@ -75,12 +80,15 @@ function docToUser(doc: any): CampusUser {
     createdAt: object.createdAt?.toISOString?.() ?? object.createdAt ?? now(),
     updatedAt: object.updatedAt?.toISOString?.() ?? object.updatedAt ?? now(),
     lastLoginAt: object.lastLoginAt?.toISOString?.() ?? object.lastLoginAt,
-    passwordChangedAt: object.passwordChangedAt?.toISOString?.() ?? object.passwordChangedAt
+    passwordChangedAt: object.passwordChangedAt?.toISOString?.() ?? object.passwordChangedAt,
+    emailVerifiedAt: object.emailVerifiedAt?.toISOString?.() ?? object.emailVerifiedAt,
+    emailOtpExpiresAt: object.emailOtpExpiresAt?.toISOString?.() ?? object.emailOtpExpiresAt,
+    isEmailVerified: Boolean(object.isEmailVerified)
   };
 }
 
 export function sanitizeUser(user: CampusUser): PublicCampusUser {
-  const { passwordHash, temporaryPassword, ...safe } = user;
+  const { passwordHash, temporaryPassword, emailOtp, ...safe } = user;
   return safe;
 }
 
@@ -116,7 +124,7 @@ export async function verifyCampusLogin(campusId: string, password: string) {
 
 export { rolePortal };
 
-export async function createUser(input: Partial<CampusUser> & { campusId: string; name: string; email: string; role: CampusRole; temporaryPassword?: string }) {
+export async function createUser(input: Partial<CampusUser> & { campusId: string; name: string; email?: string; role: CampusRole; temporaryPassword?: string }) {
   if (await findUserByCampusId(input.campusId)) {
     throw new Error("Campus ID already exists");
   }
@@ -125,7 +133,9 @@ export async function createUser(input: Partial<CampusUser> & { campusId: string
     const doc = await (User as any).create({
       campusId: input.campusId,
       name: input.name,
-      email: input.email,
+      email: input.email ?? "",
+      isEmailVerified: input.isEmailVerified ?? false,
+      emailVerifiedAt: input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : undefined,
       phone: input.phone,
       passwordHash: bcrypt.hashSync(temporaryPassword, 10),
       role: input.role,
@@ -142,7 +152,9 @@ export async function createUser(input: Partial<CampusUser> & { campusId: string
   const user = makeUser({
     campusId: input.campusId,
     name: input.name,
-    email: input.email,
+    email: input.email ?? "",
+    isEmailVerified: input.isEmailVerified ?? false,
+    emailVerifiedAt: input.emailVerifiedAt,
     phone: input.phone,
     role: input.role,
     department: input.department,
@@ -208,6 +220,61 @@ export async function changePassword(campusId: string, newPassword: string) {
   return sanitizeUser(user);
 }
 
+export function getOnboardingPath(user?: Pick<CampusUser, "email" | "isEmailVerified" | "mustChangePassword"> | null) {
+  if (!user) return "/login";
+  if (!user.email || !user.isEmailVerified) return "/onboarding/email";
+  if (user.mustChangePassword) return "/onboarding/change-password";
+  return null;
+}
+
+export async function sendEmailOtp(campusId: string, email: string) {
+  const demoOtp = String(Math.floor(100000 + Math.random() * 900000));
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    throw new Error("Enter a valid email address");
+  }
+  if (await useMongoDatabase()) {
+    const doc = await (User as any).findOneAndUpdate(
+      { campusId: campusId.trim().toUpperCase() },
+      { email: normalizedEmail, isEmailVerified: false, emailOtp: demoOtp, emailOtpExpiresAt: expiresAt },
+      { new: true }
+    );
+    if (!doc) throw new Error("User not found");
+    return { user: sanitizeUser(docToUser(doc)), demoOtp };
+  }
+  const user = users().find((row) => row.campusId.toUpperCase() === campusId.toUpperCase());
+  if (!user) throw new Error("User not found");
+  user.email = normalizedEmail;
+  user.isEmailVerified = false;
+  user.emailOtp = demoOtp;
+  user.emailOtpExpiresAt = expiresAt.toISOString();
+  user.updatedAt = now();
+  return { user: sanitizeUser(user), demoOtp };
+}
+
+export async function verifyEmailOtp(campusId: string, otp: string) {
+  const user = await findUserByCampusId(campusId);
+  if (!user) throw new Error("User not found");
+  if (!user.emailOtp || user.emailOtp !== otp.trim()) throw new Error("Invalid OTP");
+  if (user.emailOtpExpiresAt && new Date(user.emailOtpExpiresAt).getTime() < Date.now()) throw new Error("OTP expired");
+  if (await useMongoDatabase()) {
+    const doc = await (User as any).findOneAndUpdate(
+      { campusId: campusId.trim().toUpperCase() },
+      { $set: { isEmailVerified: true, emailVerifiedAt: new Date() }, $unset: { emailOtp: "", emailOtpExpiresAt: "" } },
+      { new: true }
+    );
+    if (!doc) throw new Error("User not found");
+    return sanitizeUser(docToUser(doc));
+  }
+  user.isEmailVerified = true;
+  user.emailVerifiedAt = now();
+  user.emailOtp = undefined;
+  user.emailOtpExpiresAt = undefined;
+  user.updatedAt = now();
+  return sanitizeUser(user);
+}
+
 export async function bulkCreateStudents(input: { department: string; year: string; startRoll: number; count: number; section?: string; semester?: string; temporaryPassword?: string }) {
   const created: PublicCampusUser[] = [];
   const temporaryPassword = input.temporaryPassword ?? defaultPassword;
@@ -223,6 +290,7 @@ export async function bulkCreateStudents(input: { department: string; year: stri
       department: input.department.toUpperCase(),
       semester: input.semester ?? "1",
       section: input.section ?? "A",
+      isEmailVerified: false,
       temporaryPassword,
       mustChangePassword: true
     }));
@@ -249,8 +317,10 @@ export async function seedDemoUsers() {
             semester: user.semester,
             section: user.section,
             designation: user.designation,
+            isEmailVerified: user.isEmailVerified,
+            emailVerifiedAt: user.emailVerifiedAt ? new Date(user.emailVerifiedAt) : undefined,
             isActive: true,
-            mustChangePassword: false
+            mustChangePassword: user.mustChangePassword
           }
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -264,7 +334,9 @@ export async function seedDemoUsers() {
       ...user,
       passwordHash,
       isActive: true,
-      mustChangePassword: false,
+      isEmailVerified: user.isEmailVerified,
+      emailVerifiedAt: user.emailVerifiedAt,
+      mustChangePassword: user.mustChangePassword,
       updatedAt: now()
     };
     if (existingIndex >= 0) {
