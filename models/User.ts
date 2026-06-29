@@ -9,7 +9,7 @@ const UserSchema = new Schema(
     email: { type: String, trim: true, lowercase: true, default: "", index: true },
     isEmailVerified: { type: Boolean, default: false, index: true },
     emailVerifiedAt: { type: Date },
-    emailOtp: { type: String },
+    emailOtpHash: { type: String },
     emailOtpExpiresAt: { type: Date },
     phone: { type: String, trim: true },
     passwordHash: { type: String, required: true, select: false },

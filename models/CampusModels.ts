@@ -34,6 +34,7 @@ const AttendanceRecordSchema = new Schema({
   subjectCode: { type: String, required: true, index: true },
   date: { type: String, required: true, index: true },
   status: { type: String, enum: ["present", "absent"], required: true },
+  remarks: { type: String },
   markedBy: { type: String, required: true }
 }, base);
 AttendanceRecordSchema.index({ sessionId: 1, studentCampusId: 1 }, { unique: true });
@@ -62,12 +63,31 @@ const NoteSchema = new Schema({
   description: { type: String },
   department: { type: String, required: true, index: true },
   semester: { type: String, required: true },
+  section: { type: String, default: "A", index: true },
   subject: { type: String, required: true },
+  unit: { type: String },
   fileUrl: { type: String },
+  fileName: { type: String },
+  fileSize: { type: Number },
   uploadedBy: { type: String, required: true },
   status: { type: String, enum: ["Pending", "Approved", "Rejected"], default: "Pending", index: true },
+  approvalStatus: { type: String, default: "pending_approval", index: true },
   reviewedBy: { type: String },
   reviewComment: { type: String }
+}, base);
+
+const AnnouncementSchema = new Schema({
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  category: { type: String, enum: ["Academic", "Exam", "Assignment", "Event", "Urgent"], default: "Academic", index: true },
+  department: { type: String, required: true, index: true },
+  semester: { type: String, required: true },
+  section: { type: String, default: "A", index: true },
+  priority: { type: String, enum: ["Low", "Normal", "High", "Urgent"], default: "Normal", index: true },
+  attachmentUrl: { type: String },
+  attachmentName: { type: String },
+  createdBy: { type: String, required: true },
+  status: { type: String, enum: ["Published"], default: "Published", index: true }
 }, base);
 
 const NoteApprovalLogSchema = new Schema({
@@ -173,6 +193,7 @@ export const AttendanceRecord = models.AttendanceRecord || model("AttendanceReco
 export const PlacementDrive = models.PlacementDrive || model("PlacementDrive", PlacementDriveSchema);
 export const PlacementApplication = models.PlacementApplication || model("PlacementApplication", PlacementApplicationSchema);
 export const Note = models.Note || model("Note", NoteSchema);
+export const Announcement = models.Announcement || model("Announcement", AnnouncementSchema);
 export const NoteApprovalLog = models.NoteApprovalLog || model("NoteApprovalLog", NoteApprovalLogSchema);
 export const Assignment = models.Assignment || model("Assignment", AssignmentSchema);
 export const AssignmentSubmission = models.AssignmentSubmission || model("AssignmentSubmission", AssignmentSubmissionSchema);

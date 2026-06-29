@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { resolveDatabaseMode, useMongoDatabase, type DatabaseMode } from "@/lib/db";
+import { sendCampusVerificationOtp } from "@/lib/email";
 import { rolePortal } from "@/lib/permissions";
 import { User } from "@/models/User";
 
@@ -12,7 +13,7 @@ export type CampusUser = {
   email: string;
   isEmailVerified: boolean;
   emailVerifiedAt?: string;
-  emailOtp?: string;
+  emailOtpHash?: string;
   emailOtpExpiresAt?: string;
   phone?: string;
   passwordHash: string;
@@ -32,7 +33,7 @@ export type CampusUser = {
   updatedAt: string;
 };
 
-export type PublicCampusUser = Omit<CampusUser, "passwordHash" | "temporaryPassword" | "emailOtp">;
+export type PublicCampusUser = Omit<CampusUser, "passwordHash" | "temporaryPassword" | "emailOtpHash">;
 
 const defaultPassword = "Campus@123";
 const now = () => new Date().toISOString();
@@ -56,10 +57,10 @@ const seedUsers: CampusUser[] = [
   makeUser({ campusId: "SUPER001", name: "Super Admin", email: "super@campus.test", role: "super_admin", department: "Administration", designation: "Super Admin", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
   makeUser({ campusId: "ADM001", name: "Admin Office", email: "admin@campus.test", role: "admin", department: "Administration", designation: "Admin", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
   makeUser({ campusId: "PRI001", name: "Dr. Principal", email: "principal@campus.test", role: "principal", department: "Campus", designation: "Principal", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
-  makeUser({ campusId: "HOD-CSE-001", name: "Dr. Kavita Menon", email: "hod@campus.test", role: "hod", department: "CSE", designation: "HOD", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
+  makeUser({ campusId: "HOD-CSE-001", name: "Dr. Kavita Menon", email: "hod@campus.test", role: "hod", department: "MCA", designation: "HOD", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
   makeUser({ campusId: "FAC2026001", name: "Prof. Arjun Rao", email: "faculty@campus.test", role: "faculty", department: "MCA", designation: "Assistant Professor", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
   makeUser({ campusId: "PLC001", name: "Placement Officer", email: "placement@campus.test", role: "placement_officer", department: "Placement Cell", designation: "Placement Officer", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false }),
-  makeUser({ campusId: "MCA2026001", name: "Rahul Sharma", email: "", role: "student", department: "MCA", semester: "2", section: "A", isEmailVerified: false, mustChangePassword: true })
+  makeUser({ campusId: "MCA2026001", name: "Rahul Sharma", email: "student@campus.test", role: "student", department: "MCA", semester: "2", section: "A", isEmailVerified: true, emailVerifiedAt: now(), mustChangePassword: false })
 ];
 
 declare global {
@@ -88,7 +89,7 @@ function docToUser(doc: any): CampusUser {
 }
 
 export function sanitizeUser(user: CampusUser): PublicCampusUser {
-  const { passwordHash, temporaryPassword, emailOtp, ...safe } = user;
+  const { passwordHash, temporaryPassword, emailOtpHash, ...safe } = user;
   return safe;
 }
 
@@ -124,16 +125,27 @@ export async function verifyCampusLogin(campusId: string, password: string) {
 
 export { rolePortal };
 
-export async function createUser(input: Partial<CampusUser> & { campusId: string; name: string; email?: string; role: CampusRole; temporaryPassword?: string }) {
+function normalizeEmail(email?: string) {
+  return String(email ?? "").trim().toLowerCase();
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export async function createUser(input: Partial<CampusUser> & { campusId: string; name: string; email: string; role: CampusRole; temporaryPassword?: string }) {
   if (await findUserByCampusId(input.campusId)) {
     throw new Error("Campus ID already exists");
   }
+  const email = normalizeEmail(input.email);
+  if (!email) throw new Error("Email is required");
+  if (!isValidEmail(email)) throw new Error("Enter a valid email address");
   const temporaryPassword = input.temporaryPassword ?? defaultPassword;
   if (await useMongoDatabase()) {
     const doc = await (User as any).create({
       campusId: input.campusId,
       name: input.name,
-      email: input.email ?? "",
+      email,
       isEmailVerified: input.isEmailVerified ?? false,
       emailVerifiedAt: input.emailVerifiedAt ? new Date(input.emailVerifiedAt) : undefined,
       phone: input.phone,
@@ -152,7 +164,7 @@ export async function createUser(input: Partial<CampusUser> & { campusId: string
   const user = makeUser({
     campusId: input.campusId,
     name: input.name,
-    email: input.email ?? "",
+    email,
     isEmailVerified: input.isEmailVerified ?? false,
     emailVerifiedAt: input.emailVerifiedAt,
     phone: input.phone,
@@ -227,41 +239,41 @@ export function getOnboardingPath(user?: Pick<CampusUser, "email" | "isEmailVeri
   return null;
 }
 
-export async function sendEmailOtp(campusId: string, email: string) {
-  const demoOtp = String(Math.floor(100000 + Math.random() * 900000));
+export async function sendEmailOtp(campusId: string) {
+  const user = await findUserByCampusId(campusId);
+  if (!user) throw new Error("User not found");
+  if (!user.email) throw new Error("Email is missing. Contact admin.");
+  const otpCode = String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-    throw new Error("Enter a valid email address");
-  }
+  const emailOtpHash = await bcrypt.hash(otpCode, 10);
   if (await useMongoDatabase()) {
     const doc = await (User as any).findOneAndUpdate(
       { campusId: campusId.trim().toUpperCase() },
-      { email: normalizedEmail, isEmailVerified: false, emailOtp: demoOtp, emailOtpExpiresAt: expiresAt },
+      { emailOtpHash, emailOtpExpiresAt: expiresAt },
       { new: true }
     );
     if (!doc) throw new Error("User not found");
-    return { user: sanitizeUser(docToUser(doc)), demoOtp };
+    await sendCampusVerificationOtp({ to: user.email, name: user.name, otp: otpCode });
+    return { user: sanitizeUser(docToUser(doc)) };
   }
-  const user = users().find((row) => row.campusId.toUpperCase() === campusId.toUpperCase());
-  if (!user) throw new Error("User not found");
-  user.email = normalizedEmail;
-  user.isEmailVerified = false;
-  user.emailOtp = demoOtp;
+  user.emailOtpHash = emailOtpHash;
   user.emailOtpExpiresAt = expiresAt.toISOString();
   user.updatedAt = now();
-  return { user: sanitizeUser(user), demoOtp };
+  await sendCampusVerificationOtp({ to: user.email, name: user.name, otp: otpCode });
+  return { user: sanitizeUser(user) };
 }
 
 export async function verifyEmailOtp(campusId: string, otp: string) {
   const user = await findUserByCampusId(campusId);
   if (!user) throw new Error("User not found");
-  if (!user.emailOtp || user.emailOtp !== otp.trim()) throw new Error("Invalid OTP");
+  if (!user.emailOtpHash) throw new Error("Send OTP before verification");
   if (user.emailOtpExpiresAt && new Date(user.emailOtpExpiresAt).getTime() < Date.now()) throw new Error("OTP expired");
+  const validOtp = await bcrypt.compare(otp.trim(), user.emailOtpHash);
+  if (!validOtp) throw new Error("Invalid OTP");
   if (await useMongoDatabase()) {
     const doc = await (User as any).findOneAndUpdate(
       { campusId: campusId.trim().toUpperCase() },
-      { $set: { isEmailVerified: true, emailVerifiedAt: new Date() }, $unset: { emailOtp: "", emailOtpExpiresAt: "" } },
+      { $set: { isEmailVerified: true, emailVerifiedAt: new Date() }, $unset: { emailOtpHash: "", emailOtpExpiresAt: "" } },
       { new: true }
     );
     if (!doc) throw new Error("User not found");
@@ -269,7 +281,7 @@ export async function verifyEmailOtp(campusId: string, otp: string) {
   }
   user.isEmailVerified = true;
   user.emailVerifiedAt = now();
-  user.emailOtp = undefined;
+  user.emailOtpHash = undefined;
   user.emailOtpExpiresAt = undefined;
   user.updatedAt = now();
   return sanitizeUser(user);

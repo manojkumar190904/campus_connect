@@ -21,6 +21,7 @@ NEXTAUTH_SECRET="generate-the-same-long-random-secret"
 AUTH_URL="http://localhost:3000"
 NEXTAUTH_URL="http://localhost:3000"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+RESEND_API_KEY="your_resend_api_key_here"
 SEED_DEMO_ENABLED="false"
 ```
 
@@ -103,8 +104,11 @@ NEXTAUTH_SECRET="same-long-random-secret"
 AUTH_URL="https://your-vercel-domain.vercel.app"
 NEXTAUTH_URL="https://your-vercel-domain.vercel.app"
 NEXT_PUBLIC_APP_URL="https://your-vercel-domain.vercel.app"
+RESEND_API_KEY="your_resend_api_key_here"
 SEED_DEMO_ENABLED="false"
 ```
+
+Email verification OTPs are sent with Resend from `onboarding@resend.dev`. Add `RESEND_API_KEY` locally and in Vercel Environment Variables. If it is missing, the OTP is not shown in the UI; local development logs it in the terminal and returns a setup error.
 
 Optional environment variables:
 

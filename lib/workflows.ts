@@ -5,6 +5,7 @@ import {
   AttendanceRecord,
   AttendanceSession,
   AuditLog,
+  Announcement,
   Club,
   Event,
   EventRegistration,
@@ -45,8 +46,11 @@ const demoStoreSeed: Record<string, AnyRecord[]> = {
     { id: "APP-1", driveId: "DRV-MS", studentCampusId: "MCA2026001", studentName: "Rahul Sharma", resumeUrl: "resume.txt", status: "Under Review" }
   ],
   notes: [
-    { id: "NOTE-1", title: "Data Structures and Algorithms", description: "Unit-wise notes", department: "MCA", semester: "2", subject: "Data Structures", fileUrl: "/mock/dsa.pdf", uploadedBy: "FAC2026001", status: "Approved" },
-    { id: "NOTE-2", title: "Operating Systems Notes", description: "Process scheduling", department: "MCA", semester: "2", subject: "Operating Systems", fileUrl: "/mock/os.pdf", uploadedBy: "FAC2026001", status: "Pending" }
+    { id: "NOTE-1", title: "Data Structures and Algorithms", description: "Unit-wise notes", department: "MCA", semester: "2", section: "A", subject: "Data Structures", unit: "Unit 1", fileUrl: "/mock/dsa.pdf", fileName: "dsa.pdf", fileSize: 248000, uploadedBy: "FAC2026001", status: "Approved", approvalStatus: "approved" },
+    { id: "NOTE-2", title: "Operating Systems Notes", description: "Process scheduling", department: "MCA", semester: "2", section: "A", subject: "Operating Systems", unit: "Unit 2", fileUrl: "/mock/os.pdf", fileName: "os.pdf", fileSize: 182000, uploadedBy: "FAC2026001", status: "Pending", approvalStatus: "pending_approval" }
+  ],
+  announcements: [
+    { id: "ANN-1", title: "DBMS Lab Revision", message: "Bring your lab record for normalization revision.", category: "Academic", department: "MCA", semester: "2", section: "A", priority: "Normal", createdBy: "FAC2026001", status: "Published" }
   ],
   noteApprovalLogs: [],
   assignments: [
@@ -57,7 +61,8 @@ const demoStoreSeed: Record<string, AnyRecord[]> = {
     { id: "LEV-1", requesterCampusId: "MCA2026001", requesterName: "Rahul Sharma", role: "student", department: "MCA", fromDate: "2026-06-20", toDate: "2026-06-21", reason: "Medical appointment", status: "Pending" }
   ],
   notifications: [
-    { id: "NOT-1", recipientCampusId: "MCA2026001", role: "student", title: "Attendance Alert", message: "Operating Systems attendance is below target.", type: "attendance", read: false }
+    { id: "NOT-1", recipientCampusId: "MCA2026001", role: "student", title: "Attendance Alert", message: "Operating Systems attendance is below target.", type: "attendance", read: false },
+    { id: "NOT-2", recipientCampusId: "MCA2026001", role: "student", title: "DBMS Lab Revision", message: "Bring your lab record for normalization revision.", type: "announcement", read: false }
   ],
   auditLogs: [
     { id: "AUD-1", actorCampusId: "ADM001", action: "Login", target: "ADM001", details: "Admin signed in with Campus ID", role: "admin" },
@@ -97,6 +102,7 @@ const modelMap: Record<string, any> = {
   placementDrives: PlacementDrive,
   placementApplications: PlacementApplication,
   notes: Note,
+  announcements: Announcement,
   noteApprovalLogs: NoteApprovalLog,
   assignments: Assignment,
   assignmentSubmissions: AssignmentSubmission,
@@ -179,8 +185,17 @@ export async function markAttendance(input: AnyRecord, actorCampusId: string) {
     subjectCode: input.subjectCode,
     date: input.date,
     status: record.status,
+    remarks: record.remarks,
     markedBy: actorCampusId
   })));
+  await Promise.all(records
+    .filter((record: AnyRecord) => record.status === "absent")
+    .map((record: AnyRecord) => notify({
+      recipientCampusId: record.studentCampusId,
+      title: "Attendance Alert",
+      message: `You were marked absent for ${input.subject} on ${input.date}.`,
+      type: "attendance"
+    })));
   await audit({ actorCampusId, action: "Attendance marked", target: session.id, details: `${records.length} records` });
   return { session, records };
 }

@@ -24,7 +24,8 @@ export async function POST(request: Request) {
   if ("error" in auth) return auth.error;
   try {
     const body = await request.json();
-    const temporaryPassword = body.temporaryPassword || "Campus@123";
+    const temporaryPassword = String(body.temporaryPassword ?? "").trim();
+    if (!temporaryPassword) throw new Error("Temporary password is required");
     const user = await createUser({
       campusId: String(body.campusId ?? "").trim().toUpperCase(),
       name: String(body.name ?? "").trim(),
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
       section: body.section,
       designation: body.designation,
       temporaryPassword,
+      isEmailVerified: false,
       mustChangePassword: true
     });
     await audit({ actorCampusId: auth.user.campusId, action: "User created", target: user.campusId, details: user.role, role: auth.user.role });

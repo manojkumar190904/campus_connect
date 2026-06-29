@@ -199,13 +199,17 @@ const portalMeta: Record<PortalKey, { title: string; role: string; nav: Navigati
     title: "Faculty Portal",
     role: "faculty",
     nav: [
-      { id: "portal-faculty-overview", label: "Overview", href: "/portal/faculty", icon: Home },
-      { id: "portal-faculty-attendance", label: "Attendance", href: "/attendance", icon: ClipboardCheck },
-      { id: "portal-faculty-assignments", label: "Assignments", href: "/assignments", icon: ClipboardCheck },
-      { id: "portal-faculty-leave", label: "Leave", href: "/leave", icon: CalendarDays },
-      { id: "portal-faculty-notes", label: "Upload Notes", href: "/notes", icon: Upload },
-      { id: "portal-faculty-announcements", label: "Announcements", href: "/announcements", icon: Megaphone },
-      { id: "portal-faculty-events", label: "Events", href: "/events", icon: CalendarDays }
+      { id: "portal-faculty-overview", label: "Faculty Dashboard", href: "/portal/faculty", icon: Home },
+      { id: "portal-faculty-classes", label: "My Classes", href: "/portal/faculty/classes", icon: LibraryBig },
+      { id: "portal-faculty-attendance", label: "Mark Attendance", href: "/portal/faculty/attendance", icon: ClipboardCheck },
+      { id: "portal-faculty-notes", label: "Upload Notes", href: "/portal/faculty/notes", icon: Upload },
+      { id: "portal-faculty-announcements", label: "Announcements", href: "/portal/faculty/announcements", icon: Megaphone },
+      { id: "portal-faculty-assignments", label: "Assignments", href: "/portal/faculty/assignments", icon: ClipboardCheck },
+      { id: "portal-faculty-qr-attendance", label: "QR Attendance", href: "/portal/faculty/qr-attendance", icon: QrCode },
+      { id: "portal-faculty-students", label: "Student List", href: "/portal/faculty/students", icon: UsersRound },
+      { id: "portal-faculty-timetable", label: "Timetable", href: "/portal/faculty/timetable", icon: CalendarDays },
+      { id: "portal-faculty-reports", label: "Reports", href: "/portal/faculty/reports", icon: ShieldCheck },
+      { id: "portal-faculty-settings", label: "Settings", href: "/settings", icon: Settings }
     ]
   },
   hod: {
@@ -333,8 +337,8 @@ const roleQuickActions: Record<string, Array<{ label: string; icon: LucideIcon; 
   faculty: [
     { label: "Mark Attendance", icon: ClipboardCheck, tone: "emerald", href: "/portal/faculty/attendance" },
     { label: "Upload Notes", icon: Upload, tone: "indigo", href: "/portal/faculty/notes" },
-    { label: "Create Assignment", icon: FileText, tone: "cyan", href: "/assignments" },
-    { label: "Post Announcement", icon: Megaphone, tone: "amber", href: "/announcements" }
+    { label: "Create Assignment", icon: FileText, tone: "cyan", href: "/portal/faculty/assignments" },
+    { label: "Post Announcement", icon: Megaphone, tone: "amber", href: "/portal/faculty/announcements" }
   ],
   hod: [
     { label: "Approve Notes", icon: FileText, tone: "indigo", href: "/portal/hod/notes-approval" },
@@ -547,7 +551,11 @@ const moduleContent: Record<ModuleKey, {
     items: [
       { title: "Upload Notes", meta: "Share PDFs and lab manuals", info: "Ready", badge: "Notes", tone: "indigo" },
       { title: "Mark Attendance", meta: "Subject-wise daily attendance", info: "Today", badge: "Class", tone: "emerald" },
-      { title: "Create Announcement", meta: "Publish notice to students", info: "Instant", badge: "Notice", tone: "amber" }
+      { title: "Create Announcement", meta: "Publish notice to students", info: "Instant", badge: "Notice", tone: "amber" },
+      { title: "QR Attendance", meta: "Generate scan token", info: "5 min", badge: "QR", tone: "slate" },
+      { title: "Assignments", meta: "Create and grade work", info: "Active", badge: "Tasks", tone: "cyan" },
+      { title: "My Classes", meta: "Assigned schedule", info: "This week", badge: "Classes", tone: "blue" },
+      { title: "Student List", meta: "Search and review students", info: "Live", badge: "Students", tone: "violet" }
     ]
   }
 };
@@ -748,6 +756,8 @@ export function Topbar() {
   const [topSearch, setTopSearch] = useState("");
   const [toast, setToast] = useState("");
   const [unread, setUnread] = useState(0);
+  const [notificationsList, setNotificationsList] = useState<any[]>([]);
+  const [modal, setModal] = useState<ModalState>(null);
   const initials = (user?.name ?? user?.campusId ?? "CC").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const logout = () => {
     void signOut({ callbackUrl: "/login" });
@@ -756,7 +766,10 @@ export function Topbar() {
   useEffect(() => {
     fetch("/api/notifications")
       .then((response) => response.ok ? response.json() : null)
-      .then((data) => setUnread(data?.unread ?? 0))
+      .then((data) => {
+        setUnread(data?.unread ?? 0);
+        setNotificationsList(data?.notifications ?? []);
+      })
       .catch(() => setUnread(0));
   }, [pathname]);
 
@@ -768,6 +781,7 @@ export function Topbar() {
   return (
     <header className="flex min-h-[72px] items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
       <Toast message={toast} />
+      <Modal modal={modal} onClose={() => setModal(null)} />
       <div className="lg:hidden">
         <p className="text-lg font-black capitalize text-slate-950">{label}</p>
         <p className="text-xs font-bold text-slate-500">CampusOS</p>
@@ -786,7 +800,23 @@ export function Topbar() {
       </div>
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <Badge className="hidden border-cyan-100 bg-cyan-50 text-cyan-700 sm:inline-flex">15 Jun 2026</Badge>
-        <button onClick={() => notify(`You have ${unread || 0} unread campus notifications`)} className="relative hidden size-11 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm sm:grid">
+        <button onClick={() => setModal({
+          title: "Notifications",
+          body: (
+            <div className="space-y-3">
+              {notificationsList.map((item) => (
+                <div key={item.id || `${item.title}-${item.message}`} className="rounded-2xl bg-slate-50 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-black text-slate-950">{item.title}</p>
+                    {!item.read ? <Badge className="bg-rose-50 text-rose-700">Unread</Badge> : null}
+                  </div>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{item.message}</p>
+                </div>
+              ))}
+              {!notificationsList.length ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-500">No notifications yet.</p> : null}
+            </div>
+          )
+        })} className="relative hidden size-11 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm sm:grid">
           <Bell size={18} />
           {unread ? <span className="absolute right-2 top-2 grid size-5 place-items-center rounded-full bg-rose-500 text-[10px] font-black text-white">{unread}</span> : null}
         </button>
@@ -1023,6 +1053,7 @@ export function DashboardPage() {
 }
 
 export function ModulePage({ module }: { module: ModuleKey }) {
+  const router = useRouter();
   const currentUser = useCurrentUser();
   const data = moduleContent[module];
   const Icon = data.icon;
@@ -1054,10 +1085,14 @@ export function ModulePage({ module }: { module: ModuleKey }) {
   if (module === "notes" && currentUser?.role === "student") return <StudentNotesPage />;
   if (module === "notes" && currentUser?.role === "faculty") return <FacultyNotesPage />;
   if (module === "notes" && currentUser?.role === "hod") return <HodNotesApprovalPage />;
+  if (module === "announcements" && currentUser?.role === "student") return <StudentAnnouncementsPage />;
+  if (module === "announcements" && currentUser?.role === "faculty") return <FacultyAnnouncementsPage />;
   if (module === "attendance" && currentUser?.role === "student") return <StudentAttendancePage />;
   if (module === "attendance" && currentUser?.role === "faculty") return <FacultyAttendancePage />;
   if (module === "attendance" && currentUser?.role === "hod") return <HodAttendancePage />;
   if (module === "attendance" && currentUser?.role === "principal") return <HodAttendancePage principal />;
+  if (module === "assignments" && currentUser?.role === "student") return <StudentAssignmentsPage />;
+  if (module === "assignments" && currentUser?.role === "faculty") return <FacultyAssignmentsPage />;
   if (module === "placements" && currentUser) return <PlacementHubPage />;
 
   const filteredItems = useMemo(() => {
@@ -1243,7 +1278,7 @@ export function ModulePage({ module }: { module: ModuleKey }) {
       return;
     }
     if (module === "faculty") {
-      openCreateModal(item.title);
+      router.push(facultyPortalRoutes[item.title] ?? "/portal/faculty");
       return;
     }
     if (module === "resume") {
@@ -1910,22 +1945,52 @@ export function DemoModePage() {
 export function FacultyAttendancePage() {
   const user = useCurrentUser();
   const [toast, setToast] = useState("");
-  const [form, setForm] = useState({ subjectCode: "MCA201", semester: "2", section: "A", date: new Date().toISOString().slice(0, 10) });
-  const [statuses, setStatuses] = useState<Record<string, "present" | "absent">>({ MCA2026001: "present", MCA2026002: "present", MCA2026003: "absent" });
+  const [form, setForm] = useState({ subjectCode: "MCA201", department: "MCA", semester: "2", section: "A", date: new Date().toISOString().slice(0, 10) });
+  const [students, setStudents] = useState(demoStudents);
+  const [loaded, setLoaded] = useState(false);
+  const [statuses, setStatuses] = useState<Record<string, "present" | "absent">>({});
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
   const subject = subjectOptions.find((item) => item.code === form.subjectCode) ?? subjectOptions[0];
-  const students = demoStudents.filter((student) => student.semester === form.semester && student.section === form.section);
 
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2200);
   }
 
-  async function saveAttendance() {
+  async function loadStudents() {
     try {
-      await jsonRequest("/api/attendance/session", {
+      const params = new URLSearchParams({ department: form.department, semester: form.semester, section: form.section });
+      const response = await fetch(`/api/faculty/students?${params.toString()}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || "Unable to load students");
+      const nextStudents = payload.students?.length ? payload.students : demoStudents.filter((student) => student.department === form.department && student.semester === form.semester && student.section === form.section);
+      setStudents(nextStudents);
+      setStatuses(Object.fromEntries(nextStudents.map((student: any) => [student.campusId, "present"])));
+      setLoaded(true);
+      notify(`${nextStudents.length} students loaded`);
+    } catch (error) {
+      const nextStudents = demoStudents.filter((student) => student.department === form.department && student.semester === form.semester && student.section === form.section);
+      setStudents(nextStudents);
+      setStatuses(Object.fromEntries(nextStudents.map((student) => [student.campusId, "present"])));
+      setLoaded(true);
+      notify(error instanceof Error ? error.message : "Students loaded from demo data");
+    }
+  }
+
+  function markAll(status: "present" | "absent") {
+    setStatuses(Object.fromEntries(students.map((student) => [student.campusId, status])));
+    notify(status === "present" ? "All marked present" : "All marked absent");
+  }
+
+  async function saveAttendance() {
+    if (!loaded) {
+      await loadStudents();
+    }
+    try {
+      await jsonRequest("/api/faculty/attendance/save", {
         method: "POST",
         body: JSON.stringify({
-          department: user?.department || "MCA",
+          department: form.department || user?.department || "MCA",
           semester: form.semester,
           section: form.section,
           subject: subject.name,
@@ -1934,7 +1999,8 @@ export function FacultyAttendancePage() {
           records: students.map((student) => ({
             studentCampusId: student.campusId,
             studentName: student.name,
-            status: statuses[student.campusId] || "absent"
+            status: statuses[student.campusId] || "absent",
+            remarks: remarks[student.campusId] || ""
           }))
         })
       });
@@ -1957,16 +2023,24 @@ export function FacultyAttendancePage() {
             <select value={form.subjectCode} onChange={(event) => setForm((current) => ({ ...current, subjectCode: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">
               {subjectOptions.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
             </select>
-            <select value={form.semester} onChange={(event) => setForm((current) => ({ ...current, semester: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="1">Semester 1</option><option value="2">Semester 2</option></select>
-            <select value={form.section} onChange={(event) => setForm((current) => ({ ...current, section: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="A">Section A</option><option value="B">Section B</option></select>
+            <select value={form.department} onChange={(event) => setForm((current) => ({ ...current, department: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="MCA">MCA</option><option value="CSE">CSE</option></select>
+            <div className="grid gap-3 md:grid-cols-2">
+              <select value={form.semester} onChange={(event) => setForm((current) => ({ ...current, semester: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="1">Semester 1</option><option value="2">Semester 2</option></select>
+              <select value={form.section} onChange={(event) => setForm((current) => ({ ...current, section: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="A">Section A</option><option value="B">Section B</option></select>
+            </div>
             <input value={form.date} type="date" onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" />
-            <Button onClick={saveAttendance}>Save Attendance</Button>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Button variant="outline" onClick={() => { void loadStudents(); }}>Load Students</Button>
+              <Button variant="outline" onClick={() => markAll("present")}>Mark All Present</Button>
+              <Button variant="outline" onClick={() => markAll("absent")}>Mark All Absent</Button>
+            </div>
+            <Button onClick={() => { void saveAttendance(); }}>Save Attendance</Button>
           </div>
         </SectionCard>
         <SectionCard title="Student List" eyebrow={`${subject.name} • ${form.date}`} icon={UsersRound}>
           <div className="space-y-3">
             {students.map((student) => (
-              <div key={student.campusId} className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div key={student.campusId} className="grid gap-3 rounded-2xl bg-slate-50 p-3 xl:grid-cols-[1fr_auto_220px] xl:items-center">
                 <div>
                   <p className="font-black text-slate-950">{student.name}</p>
                   <p className="text-xs font-bold text-slate-500">{student.campusId} • Semester {student.semester} • Section {student.section}</p>
@@ -1976,8 +2050,10 @@ export function FacultyAttendancePage() {
                     <Button key={status} variant={statuses[student.campusId] === status ? "primary" : "outline"} className="min-h-9 px-3 py-1.5 capitalize" onClick={() => setStatuses((current) => ({ ...current, [student.campusId]: status }))}>{status}</Button>
                   ))}
                 </div>
+                <input value={remarks[student.campusId] || ""} onChange={(event) => setRemarks((current) => ({ ...current, [student.campusId]: event.target.value }))} className="h-10 rounded-2xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Remarks optional" />
               </div>
             ))}
+            {!students.length ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-500">No students found for this class.</p> : null}
           </div>
         </SectionCard>
       </section>
@@ -2134,7 +2210,7 @@ export function StudentAttendancePage() {
   const [summary, setSummary] = useState<{ records: any[]; subjects: any[]; total: number; warning: boolean }>({ records: [], subjects: [], total: 0, warning: false });
 
   useEffect(() => {
-    fetch("/api/attendance/me")
+    fetch("/api/student/attendance")
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load attendance")))
       .then((data) => setSummary(data))
       .catch((error) => setToast(error.message));
@@ -2251,10 +2327,18 @@ export function HodAttendancePage({ principal = false }: { principal?: boolean }
   );
 }
 
+function formatBytes(size: number) {
+  if (!size) return "0 KB";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+  return `${(size / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
 export function FacultyNotesPage() {
   const user = useCurrentUser();
   const [toast, setToast] = useState("");
-  const [form, setForm] = useState({ title: "", subject: "Data Structures", department: "MCA", semester: "2", fileUrl: "", description: "" });
+  const [file, setFile] = useState<File | null>(null);
+  const [form, setForm] = useState({ title: "", subject: "Data Structures", department: "MCA", semester: "2", section: "A", unit: "", description: "" });
 
   function update(key: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -2262,9 +2346,18 @@ export function FacultyNotesPage() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await jsonRequest("/api/notes", { method: "POST", body: JSON.stringify({ ...form, department: form.department || user?.department || "MCA" }) });
-    setToast("Note uploaded for HOD approval");
-    setForm((current) => ({ ...current, title: "", fileUrl: "", description: "" }));
+    const body = new FormData();
+    Object.entries({ ...form, department: form.department || user?.department || "MCA" }).forEach(([key, value]) => body.append(key, value));
+    if (file) body.append("file", file);
+    const response = await fetch("/api/faculty/notes/upload", { method: "POST", body });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setToast(payload.message || "Unable to upload note");
+      return;
+    }
+    setToast("Note uploaded successfully and sent to HOD for approval.");
+    setFile(null);
+    setForm((current) => ({ ...current, title: "", unit: "", description: "" }));
   }
 
   return (
@@ -2277,14 +2370,30 @@ export function FacultyNotesPage() {
       <SectionCard title="Note Details" eyebrow="Faculty upload" icon={Upload}>
         <form onSubmit={submit} className="grid gap-3">
           <input value={form.title} onChange={(event) => update("title", event.target.value)} required className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Note title" />
-          <select value={form.subject} onChange={(event) => update("subject", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">{subjectOptions.map((item) => <option key={item.code}>{item.name}</option>)}</select>
           <div className="grid gap-3 md:grid-cols-3">
             <input value={form.department} onChange={(event) => update("department", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Department" />
             <select value={form.semester} onChange={(event) => update("semester", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="1">Semester 1</option><option value="2">Semester 2</option></select>
-            <input value={form.fileUrl} onChange={(event) => update("fileUrl", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="PDF/file URL or leave blank" />
+            <select value={form.section} onChange={(event) => update("section", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="A">Section A</option><option value="B">Section B</option></select>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <select value={form.subject} onChange={(event) => update("subject", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">{subjectOptions.map((item) => <option key={item.code}>{item.name}</option>)}</select>
+            <input value={form.unit} onChange={(event) => update("unit", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Unit / Module" />
           </div>
           <textarea value={form.description} onChange={(event) => update("description", event.target.value)} className="min-h-28 rounded-2xl border border-slate-200 p-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Description" />
-          <Button type="submit">Submit</Button>
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+            <input id="faculty-note-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.png" className="sr-only" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black text-slate-950">{file ? file.name : "No file selected"}</p>
+                <p className="text-xs font-bold text-slate-500">{file ? formatBytes(file.size) : "PDF, DOC, PPT, JPG or PNG"}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => document.getElementById("faculty-note-file")?.click()}><Upload size={16} /> Upload File</Button>
+                {file ? <Button type="button" variant="outline" onClick={() => setFile(null)}>Remove File</Button> : null}
+              </div>
+            </div>
+          </div>
+          <Button type="submit">Submit Note</Button>
         </form>
       </SectionCard>
     </AppShell>
@@ -2341,7 +2450,7 @@ export function StudentNotesPage() {
   const [subject, setSubject] = useState("all");
 
   useEffect(() => {
-    fetch("/api/notes?status=Approved")
+    fetch("/api/student/notes")
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load notes")))
       .then((data) => setNotesList(data.notes ?? []))
       .catch((error) => setToast(error.message));
@@ -2381,6 +2490,398 @@ export function StudentNotesPage() {
           </div>
         ))}
       </section>
+    </AppShell>
+  );
+}
+
+export function FacultyAnnouncementsPage() {
+  const user = useCurrentUser();
+  const [toast, setToast] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [form, setForm] = useState({
+    title: "",
+    message: "",
+    category: "Academic",
+    department: "MCA",
+    semester: "2",
+    section: "A",
+    priority: "Normal"
+  });
+
+  function update(key: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function publish(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const body = new FormData();
+    Object.entries({ ...form, department: form.department || user?.department || "MCA" }).forEach(([key, value]) => body.append(key, value));
+    if (attachment) body.append("attachment", attachment);
+    const response = await fetch("/api/faculty/announcements/create", { method: "POST", body });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setToast(payload.message || "Unable to publish announcement");
+      return;
+    }
+    setToast("Announcement published and notifications sent to students.");
+    setAttachment(null);
+    setForm((current) => ({ ...current, title: "", message: "" }));
+  }
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Announcements</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Publish notices to the students in your class.</p>
+      </section>
+      <SectionCard title="Create Announcement" eyebrow="Faculty broadcast" icon={Megaphone}>
+        <form onSubmit={publish} className="grid gap-3">
+          <input value={form.title} onChange={(event) => update("title", event.target.value)} required className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Title" />
+          <textarea value={form.message} onChange={(event) => update("message", event.target.value)} required className="min-h-36 rounded-2xl border border-slate-200 p-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Message body" />
+          <div className="grid gap-3 md:grid-cols-4">
+            <select value={form.category} onChange={(event) => update("category", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">{["Academic", "Exam", "Assignment", "Event", "Urgent"].map((item) => <option key={item}>{item}</option>)}</select>
+            <input value={form.department} onChange={(event) => update("department", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Department" />
+            <select value={form.semester} onChange={(event) => update("semester", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="1">Semester 1</option><option value="2">Semester 2</option></select>
+            <select value={form.section} onChange={(event) => update("section", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="A">Section A</option><option value="B">Section B</option></select>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+            <select value={form.priority} onChange={(event) => update("priority", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">{["Low", "Normal", "High", "Urgent"].map((item) => <option key={item}>{item}</option>)}</select>
+            <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <input id="faculty-announcement-attachment" type="file" className="sr-only" onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
+              <p className="text-sm font-bold text-slate-600">{attachment ? `${attachment.name} • ${formatBytes(attachment.size)}` : "Attachment optional"}</p>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => document.getElementById("faculty-announcement-attachment")?.click()}>Attach</Button>
+                {attachment ? <Button type="button" variant="outline" onClick={() => setAttachment(null)}>Remove</Button> : null}
+              </div>
+            </div>
+          </div>
+          <Button type="submit">Publish Announcement</Button>
+        </form>
+      </SectionCard>
+    </AppShell>
+  );
+}
+
+export function StudentAnnouncementsPage() {
+  const [toast, setToast] = useState("");
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/student/announcements")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load announcements")))
+      .then((data) => setAnnouncements(data.announcements ?? []))
+      .catch((error) => setToast(error.message));
+  }, []);
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Announcements</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Class notices and faculty updates.</p>
+      </section>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {announcements.map((announcement) => (
+          <div key={announcement.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]">
+            <span className="grid size-12 place-items-center rounded-2xl bg-amber-50 text-amber-600"><Megaphone size={22} /></span>
+            <div className="mt-5 flex flex-wrap gap-2"><Badge>{announcement.category}</Badge><Badge className={announcement.priority === "Urgent" ? "bg-rose-50 text-rose-700" : ""}>{announcement.priority}</Badge></div>
+            <h2 className="mt-4 text-xl font-black text-slate-950">{announcement.title}</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{announcement.message}</p>
+            <p className="mt-4 text-xs font-bold text-slate-500">{announcement.department} • Semester {announcement.semester} • Section {announcement.section}</p>
+          </div>
+        ))}
+        {!announcements.length ? <p className="rounded-3xl border border-slate-200 bg-white p-6 text-sm font-bold text-slate-500">No announcements yet.</p> : null}
+      </section>
+    </AppShell>
+  );
+}
+
+export function FacultyClassesPage() {
+  const [toast, setToast] = useState("");
+  const [classes, setClasses] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/faculty/classes")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load classes")))
+      .then((data) => setClasses(data.classes ?? []))
+      .catch((error) => setToast(error.message));
+  }, []);
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">My Classes</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Assigned subjects, sections and weekly schedule.</p>
+      </section>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {classes.map((item) => (
+          <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]">
+            <span className="grid size-12 place-items-center rounded-2xl bg-blue-50 text-blue-600"><LibraryBig size={22} /></span>
+            <h2 className="mt-5 text-xl font-black text-slate-950">{item.subject}</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-500">{item.department} • Semester {item.semester} • Section {item.section}</p>
+            <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{item.schedule}</p>
+            <div className="mt-5 grid gap-2">
+              <Link href="/portal/faculty/attendance" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#4f46e5] to-[#6366f1] px-5 py-2.5 text-sm font-bold text-white">Mark Attendance</Link>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Link href="/portal/faculty/notes" className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700">Upload Notes</Link>
+                <Link href="/portal/faculty/assignments" className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700">Create Assignment</Link>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+    </AppShell>
+  );
+}
+
+export function FacultyStudentsPage() {
+  const [toast, setToast] = useState("");
+  const [modal, setModal] = useState<ModalState>(null);
+  const [filters, setFilters] = useState({ department: "MCA", semester: "2", section: "A", search: "" });
+  const [students, setStudents] = useState<any[]>([]);
+
+  async function load() {
+    const params = new URLSearchParams(filters);
+    const response = await fetch(`/api/faculty/students?${params.toString()}`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Unable to load students");
+    setStudents(payload.students ?? []);
+  }
+
+  useEffect(() => {
+    load().catch((error) => setToast(error.message));
+  }, [filters.department, filters.semester, filters.section]);
+
+  const visible = students.filter((student) => `${student.campusId} ${student.name}`.toLowerCase().includes(filters.search.toLowerCase()));
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <Modal modal={modal} onClose={() => setModal(null)} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Student List</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Filter students and review class attendance.</p>
+      </section>
+      <div className="mb-5 grid gap-3 md:grid-cols-4">
+        <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Search students" />
+        <select value={filters.department} onChange={(event) => setFilters((current) => ({ ...current, department: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="MCA">MCA</option><option value="CSE">CSE</option></select>
+        <select value={filters.semester} onChange={(event) => setFilters((current) => ({ ...current, semester: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="1">Semester 1</option><option value="2">Semester 2</option></select>
+        <select value={filters.section} onChange={(event) => setFilters((current) => ({ ...current, section: event.target.value }))} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="A">Section A</option><option value="B">Section B</option></select>
+      </div>
+      <SectionCard title="Students" eyebrow={`${visible.length} shown`} icon={UsersRound}>
+        <div className="space-y-3">
+          {visible.map((student) => (
+            <div key={student.campusId} className="grid gap-3 rounded-2xl bg-slate-50 p-3 lg:grid-cols-[1fr_140px_auto] lg:items-center">
+              <div><p className="font-black text-slate-950">{student.name}</p><p className="text-xs font-bold text-slate-500">{student.campusId} • {student.department} • Semester {student.semester} • Section {student.section}</p></div>
+              <Badge>{student.attendancePercentage ?? 0}% attendance</Badge>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" className="min-h-9 px-3 py-1.5" onClick={() => setModal({ title: "Student Attendance", body: <ItemList rows={[{ title: student.name, meta: student.campusId, info: `${student.attendancePercentage ?? 0}%`, badge: "Attendance", tone: (Number(student.attendancePercentage) < 75 ? "amber" : "emerald") as Tone }]} icon={ClipboardCheck} /> })}>View Attendance</Button>
+                <Button variant="outline" className="min-h-9 px-3 py-1.5" onClick={() => setModal({ title: "Student Profile", body: <ItemList rows={[{ title: student.name, meta: `${student.department} • Semester ${student.semester}`, info: student.email || student.campusId, badge: student.section, tone: "indigo" }]} icon={UserRound} /> })}>View Profile</Button>
+              </div>
+            </div>
+          ))}
+          {!visible.length ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-500">No students found.</p> : null}
+        </div>
+      </SectionCard>
+    </AppShell>
+  );
+}
+
+export function FacultyAssignmentsPage() {
+  const user = useCurrentUser();
+  const [toast, setToast] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [graded, setGraded] = useState<Record<string, string>>({});
+  const [form, setForm] = useState({ title: "", subject: "DBMS", department: "MCA", semester: "2", section: "A", deadline: new Date().toISOString().slice(0, 10), instructions: "" });
+
+  function update(key: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function load() {
+    const response = await fetch("/api/assignments");
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || "Unable to load assignments");
+    setAssignments(payload.assignments ?? []);
+  }
+
+  useEffect(() => {
+    load().catch((error) => setToast(error.message));
+  }, []);
+
+  async function createAssignment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = await jsonRequest("/api/faculty/assignments/create", { method: "POST", body: JSON.stringify({ ...form, department: form.department || user?.department || "MCA", attachmentName: attachment?.name }) });
+    setAssignments((current) => [payload.assignment, ...current]);
+    setAttachment(null);
+    setForm((current) => ({ ...current, title: "", instructions: "" }));
+    setToast("Assignment created");
+  }
+
+  function gradeSubmission(id: string, grade: string) {
+    setGraded((current) => ({ ...current, [id]: grade }));
+    setToast("Submission graded");
+  }
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Assignments</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Create assignments and review submissions.</p>
+      </section>
+      <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <SectionCard title="Create Assignment" eyebrow="Faculty task" icon={ClipboardCheck}>
+          <form onSubmit={createAssignment} className="grid gap-3">
+            <input value={form.title} onChange={(event) => update("title", event.target.value)} required className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Title" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <select value={form.subject} onChange={(event) => update("subject", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">{subjectOptions.map((item) => <option key={item.code}>{item.name}</option>)}</select>
+              <input value={form.deadline} type="date" onChange={(event) => update("deadline", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <input value={form.department} onChange={(event) => update("department", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Department" />
+              <select value={form.semester} onChange={(event) => update("semester", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="1">Semester 1</option><option value="2">Semester 2</option></select>
+              <select value={form.section} onChange={(event) => update("section", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold"><option value="A">Section A</option><option value="B">Section B</option></select>
+            </div>
+            <textarea value={form.instructions} onChange={(event) => update("instructions", event.target.value)} required className="min-h-28 rounded-2xl border border-slate-200 p-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Instructions" />
+            <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <input id="faculty-assignment-attachment" type="file" className="sr-only" onChange={(event) => setAttachment(event.target.files?.[0] ?? null)} />
+              <p className="text-sm font-bold text-slate-600">{attachment ? `${attachment.name} • ${formatBytes(attachment.size)}` : "Attachment optional"}</p>
+              <Button type="button" variant="outline" onClick={() => document.getElementById("faculty-assignment-attachment")?.click()}>Attach</Button>
+            </div>
+            <Button type="submit">Create Assignment</Button>
+          </form>
+        </SectionCard>
+        <SectionCard title="Assignments" eyebrow={`${assignments.length} created`} icon={FileText}>
+          <div className="space-y-3">
+            {assignments.map((assignment) => (
+              <div key={assignment.id} className="rounded-2xl bg-slate-50 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div><p className="font-black text-slate-950">{assignment.title}</p><p className="text-xs font-bold text-slate-500">{assignment.subject} • Due {assignment.deadline}</p></div>
+                  <Badge>{assignment.section}</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <p className="text-sm font-bold text-slate-600">Mock submission: Rahul Sharma</p>
+                  <div className="flex gap-2">
+                    {["A", "B", "C"].map((grade) => <Button key={grade} variant={graded[assignment.id] === grade ? "primary" : "outline"} className="min-h-9 px-3 py-1.5" onClick={() => gradeSubmission(assignment.id, grade)}>{grade}</Button>)}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!assignments.length ? <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-500">No assignments created yet.</p> : null}
+          </div>
+        </SectionCard>
+      </section>
+    </AppShell>
+  );
+}
+
+export function StudentAssignmentsPage() {
+  const [toast, setToast] = useState("");
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [submitted, setSubmitted] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetch("/api/student/assignments")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load assignments")))
+      .then((data) => setAssignments(data.assignments ?? []))
+      .catch((error) => setToast(error.message));
+  }, []);
+
+  async function submitAssignment(assignment: any) {
+    await jsonRequest("/api/assignments/submit", { method: "POST", body: JSON.stringify({ assignmentId: assignment.id, link: "https://example.com/submission" }) });
+    setSubmitted((current) => ({ ...current, [assignment.id]: true }));
+    setToast("Assignment submitted");
+  }
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Assignments</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Class assignments assigned by faculty.</p>
+      </section>
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {assignments.map((assignment) => (
+          <div key={assignment.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]">
+            <span className="grid size-12 place-items-center rounded-2xl bg-cyan-50 text-cyan-600"><ClipboardCheck size={22} /></span>
+            <h2 className="mt-5 text-xl font-black text-slate-950">{assignment.title}</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-500">{assignment.subject} • Due {assignment.deadline}</p>
+            <p className="mt-4 text-sm font-semibold leading-6 text-slate-600">{assignment.instructions}</p>
+            <Button className="mt-5 w-full" onClick={() => { void submitAssignment(assignment); }}>{submitted[assignment.id] ? "Submitted" : "Submit Assignment"}</Button>
+          </div>
+        ))}
+      </section>
+    </AppShell>
+  );
+}
+
+export function FacultyReportsPage() {
+  const [toast, setToast] = useState("");
+  const [report, setReport] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/faculty/reports")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load reports")))
+      .then((data) => setReport(data.report))
+      .catch((error) => setToast(error.message));
+  }, []);
+
+  const statsRows = [
+    { title: "Attendance This Week", value: report?.attendanceMarkedThisWeek ?? 0, icon: ClipboardCheck, tone: "emerald" as Tone },
+    { title: "Notes Uploaded", value: report?.notesUploaded ?? 0, icon: Upload, tone: "indigo" as Tone },
+    { title: "Announcements", value: report?.announcementsPosted ?? 0, icon: Megaphone, tone: "amber" as Tone },
+    { title: "Assignments", value: report?.assignmentsCreated ?? 0, icon: FileText, tone: "cyan" as Tone }
+  ];
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Reports</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Faculty activity and low attendance overview.</p>
+      </section>
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {statsRows.map((item) => <StatCard key={item.title} title={item.title} value={String(item.value)} label="Faculty metric" icon={item.icon} tone={item.tone} />)}
+      </section>
+      <section className="mt-5">
+        <SectionCard title="Low Attendance Students" eyebrow="Below 75%" icon={ShieldCheck}>
+          <div className="space-y-3">
+            {(report?.lowAttendanceStudents ?? []).map((student: any) => <div key={student.studentCampusId} className="rounded-2xl bg-amber-50 p-3"><p className="font-black text-slate-950">{student.studentName}</p><p className="text-sm font-bold text-amber-700">{student.percentage}% attendance</p></div>)}
+            {!(report?.lowAttendanceStudents ?? []).length ? <p className="rounded-2xl bg-emerald-50 p-4 text-sm font-black text-emerald-700">No low attendance students found.</p> : null}
+          </div>
+        </SectionCard>
+      </section>
+    </AppShell>
+  );
+}
+
+export function FacultyTimetablePage() {
+  const [toast, setToast] = useState("");
+  const [classes, setClasses] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/faculty/classes")
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load timetable")))
+      .then((data) => setClasses(data.classes ?? []))
+      .catch((error) => setToast(error.message));
+  }, []);
+
+  return (
+    <AppShell>
+      <Toast message={toast} />
+      <section className="mb-6 overflow-hidden rounded-[28px] bg-gradient-to-r from-[#4f46e5] to-[#6366f1] p-6 text-white shadow-[0_24px_60px_-36px_rgba(79,70,229,0.95)]">
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Timetable</h1>
+        <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/85 sm:text-base">Weekly teaching schedule.</p>
+      </section>
+      <SectionCard title="Weekly Schedule" eyebrow="Assigned classes" icon={CalendarDays}>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {classes.map((item) => <div key={item.id} className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-950">{item.subject}</p><p className="mt-1 text-sm font-bold text-slate-500">{item.schedule}</p><p className="mt-2 text-xs font-bold text-slate-500">{item.department} • Semester {item.semester} • Section {item.section}</p></div>)}
+        </div>
+      </SectionCard>
     </AppShell>
   );
 }
@@ -2562,7 +3063,21 @@ function portalItems(portal: PortalKey): MockItem[] {
   return maps[portal];
 }
 
+const facultyPortalRoutes: Record<string, string> = {
+  Attendance: "/portal/faculty/attendance",
+  "Mark Attendance": "/portal/faculty/attendance",
+  "Upload Notes": "/portal/faculty/notes",
+  "Create Announcement": "/portal/faculty/announcements",
+  "QR Attendance": "/portal/faculty/qr-attendance",
+  Assignments: "/portal/faculty/assignments",
+  "My Classes": "/portal/faculty/classes",
+  "Student List": "/portal/faculty/students",
+  Reports: "/portal/faculty/reports",
+  Timetable: "/portal/faculty/timetable"
+};
+
 export function PortalPage({ portal }: { portal: PortalKey }) {
+  const router = useRouter();
   const meta = portalMeta[portal];
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState("");
@@ -2597,7 +3112,15 @@ export function PortalPage({ portal }: { portal: PortalKey }) {
               <h2 className="mt-5 text-xl font-black text-slate-950">{item.title}</h2>
               <p className="mt-2 text-sm font-bold leading-6 text-slate-500">{item.meta}</p>
               <p className="mt-4 text-lg font-black text-slate-700">{item.info}</p>
-              <Button className="mt-5 w-full" onClick={() => { setModal({ title: item.title, body: <ItemList rows={[item]} icon={ShieldCheck} /> }); notify(`${item.title} opened`); }}>Open</Button>
+              <Button className="mt-5 w-full" onClick={() => {
+                const href = portal === "faculty" ? facultyPortalRoutes[item.title] : undefined;
+                if (href) {
+                  router.push(href);
+                  return;
+                }
+                setModal({ title: item.title, body: <ItemList rows={[item]} icon={ShieldCheck} /> });
+                notify(`${item.title} opened`);
+              }}>Open</Button>
             </div>
           </motion.div>
         ))}
@@ -2609,6 +3132,7 @@ export function PortalPage({ portal }: { portal: PortalKey }) {
 function AdminUserCreateForm({ kind, onCreate }: { kind: string; onCreate: (user: any) => Promise<void> }) {
   const normalizedRole = kind.toLowerCase().replace(" ", "_");
   const prefix: Record<string, string> = { student: "MCA2026", faculty: "FAC2026", hod: "HOD-CSE-", principal: "PRI", placement_officer: "PLC" };
+  const [error, setError] = useState("");
   const [form, setForm] = useState({
     campusId: `${prefix[normalizedRole] ?? "USR"}001`,
     name: `New ${kind}`,
@@ -2616,6 +3140,7 @@ function AdminUserCreateForm({ kind, onCreate }: { kind: string; onCreate: (user
     department: normalizedRole === "hod" ? "CSE" : "MCA",
     semester: normalizedRole === "student" ? "1" : "",
     section: normalizedRole === "student" ? "A" : "",
+    email: "",
     temporaryPassword: "Campus@123"
   });
 
@@ -2628,16 +3153,22 @@ function AdminUserCreateForm({ kind, onCreate }: { kind: string; onCreate: (user
       className="grid gap-3"
       onSubmit={async (event) => {
         event.preventDefault();
-        await onCreate({
-          ...form,
-          campusId: form.campusId.trim().toUpperCase(),
-          email: `${form.campusId.trim().toLowerCase()}@campus.test`,
-          isActive: true
-        });
+        setError("");
+        try {
+          await onCreate({
+            ...form,
+            campusId: form.campusId.trim().toUpperCase(),
+            email: form.email.trim().toLowerCase(),
+            isActive: true
+          });
+        } catch (createError) {
+          setError(createError instanceof Error ? createError.message : "Unable to create user");
+        }
       }}
     >
       <input value={form.campusId} onChange={(event) => update("campusId", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Campus ID" />
       <input value={form.name} onChange={(event) => update("name", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Name" />
+      <input value={form.email} onChange={(event) => update("email", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Email" type="email" required />
       <select value={form.role} onChange={(event) => update("role", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold">
         <option value="student">Student</option>
         <option value="faculty">Faculty</option>
@@ -2650,7 +3181,8 @@ function AdminUserCreateForm({ kind, onCreate }: { kind: string; onCreate: (user
         <input value={form.semester} onChange={(event) => update("semester", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Semester" />
         <input value={form.section} onChange={(event) => update("section", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Section" />
       </div>
-      <input value={form.temporaryPassword} onChange={(event) => update("temporaryPassword", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Temporary Password" />
+      <input value={form.temporaryPassword} onChange={(event) => update("temporaryPassword", event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Temporary Password" required />
+      {error ? <p className="rounded-2xl border border-rose-100 bg-rose-50 p-3 text-sm font-black text-rose-700">{error}</p> : null}
       <Button type="submit">Create User</Button>
     </form>
   );
@@ -2658,9 +3190,9 @@ function AdminUserCreateForm({ kind, onCreate }: { kind: string; onCreate: (user
 
 function AdminPortalPage() {
   const [users, setUsers] = useState<Array<any>>([
-    { campusId: "MCA2026001", name: "Rahul Sharma", role: "student", department: "MCA", semester: "2", isActive: true },
-    { campusId: "FAC2026001", name: "Prof. Arjun Rao", role: "faculty", department: "MCA", semester: "-", isActive: true },
-    { campusId: "HOD-CSE-001", name: "Dr. Kavita Menon", role: "hod", department: "CSE", semester: "-", isActive: true }
+    { campusId: "MCA2026001", name: "Rahul Sharma", email: "student@campus.test", role: "student", department: "MCA", semester: "2", isActive: true },
+    { campusId: "FAC2026001", name: "Prof. Arjun Rao", email: "faculty@campus.test", role: "faculty", department: "MCA", semester: "-", isActive: true },
+    { campusId: "HOD-CSE-001", name: "Dr. Kavita Menon", email: "hod@campus.test", role: "hod", department: "MCA", semester: "-", isActive: true }
   ]);
   const [query, setQuery] = useState("");
   const [role, setRole] = useState("all");
@@ -2696,7 +3228,7 @@ function AdminPortalPage() {
   }
 
   function exportCsv() {
-    const csv = ["Campus ID,Name,Role,Department,Semester,Temporary Password", ...users.map((user) => `${user.campusId},${user.name},${user.role},${user.department},${user.semester},${user.temporaryPassword ?? ""}`)].join("\n");
+    const csv = ["Campus ID,Name,Email,Role,Department,Semester,Temporary Password", ...users.map((user) => `${user.campusId},${user.name},${user.email ?? ""},${user.role},${user.department},${user.semester},${user.temporaryPassword ?? ""}`)].join("\n");
     downloadMockFile("campus-login-credentials.csv", csv);
     notify("Credentials CSV exported");
   }
@@ -2711,7 +3243,7 @@ function AdminPortalPage() {
             const payload = await adminRequest("/api/admin/users", { method: "POST", body: JSON.stringify(next) });
             const createdUser = { ...payload.user, temporaryPassword: payload.temporaryPassword };
             setUsers((current) => [...current.filter((row) => row.campusId !== createdUser.campusId), createdUser]);
-            setLastCredentials(`${createdUser.campusId} / ${payload.temporaryPassword}`);
+            setLastCredentials(`Campus ID: ${createdUser.campusId}\nEmail: ${createdUser.email}\nTemporary Password: ${payload.temporaryPassword}`);
             setModal(null);
             notify(`${kind} created`);
           }}
@@ -2728,7 +3260,7 @@ function AdminPortalPage() {
     if (!payload?.users) return;
     const created = payload.users.map((user: any) => ({ ...user, temporaryPassword: payload.temporaryPassword }));
     setUsers((current) => [...current.filter((user) => !created.some((next: any) => next.campusId === user.campusId)), ...created]);
-    setLastCredentials(`${created.length} student IDs / ${payload.temporaryPassword}`);
+    setLastCredentials(created.map((user: any) => `Campus ID: ${user.campusId}\nEmail: ${user.email}\nTemporary Password: ${payload.temporaryPassword}`).join("\n\n"));
     notify("Bulk student IDs generated in database");
   }
 
@@ -2755,12 +3287,12 @@ function AdminPortalPage() {
         <div className="space-y-3">
           {filtered.map((user) => (
             <div key={user.campusId} className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_120px_120px_auto] md:items-center">
-              <div><p className="font-black text-slate-950">{user.name}</p><p className="text-xs font-bold text-slate-500">{user.campusId} • {user.department}</p></div>
+              <div><p className="font-black text-slate-950">{user.name}</p><p className="text-xs font-bold text-slate-500">{user.campusId} • {user.email ?? "No email"} • {user.department}</p></div>
               <Badge>{user.role}</Badge>
               <Badge className={user.isActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}>{user.isActive ? "Active" : "Inactive"}</Badge>
               <div className="flex gap-2">
                 <Button variant="outline" className="min-h-9 px-3 py-1.5" onClick={async () => { try { await adminRequest(`/api/admin/users/${user.campusId}`, { method: "PATCH", body: JSON.stringify({ isActive: !user.isActive }) }); setUsers((current) => current.map((row) => row.campusId === user.campusId ? { ...row, isActive: !row.isActive } : row)); notify("User status updated"); } catch (error) { notify(error instanceof Error ? error.message : "Unable to update user"); } }}>{user.isActive ? "Deactivate" : "Activate"}</Button>
-                <Button variant="outline" className="min-h-9 px-3 py-1.5" onClick={async () => { try { const payload = await adminRequest("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ campusId: user.campusId, temporaryPassword: "Campus@123" }) }); setUsers((current) => current.map((row) => row.campusId === user.campusId ? { ...row, temporaryPassword: payload.temporaryPassword } : row)); setLastCredentials(`${user.campusId} / ${payload.temporaryPassword}`); notify(`Password reset for ${user.campusId}`); } catch (error) { notify(error instanceof Error ? error.message : "Unable to reset password"); } }}>Reset</Button>
+                <Button variant="outline" className="min-h-9 px-3 py-1.5" onClick={async () => { try { const payload = await adminRequest("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ campusId: user.campusId, temporaryPassword: "Campus@123" }) }); setUsers((current) => current.map((row) => row.campusId === user.campusId ? { ...row, temporaryPassword: payload.temporaryPassword } : row)); setLastCredentials(`Campus ID: ${user.campusId}\nEmail: ${user.email ?? ""}\nTemporary Password: ${payload.temporaryPassword}`); notify(`Password reset for ${user.campusId}`); } catch (error) { notify(error instanceof Error ? error.message : "Unable to reset password"); } }}>Reset</Button>
               </div>
             </div>
           ))}
@@ -2848,7 +3380,6 @@ export function OnboardingEmailPage() {
   const [user, setUser] = useState<CampusSessionUser | null>(null);
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  const [demoOtp, setDemoOtp] = useState("");
 
   useEffect(() => {
     fetch("/api/me")
@@ -2860,17 +3391,15 @@ export function OnboardingEmailPage() {
       .catch((error) => setToast(error.message));
   }, []);
 
-  async function sendOtp(successMessage = "Demo OTP generated") {
+  async function sendOtp() {
     try {
-      const response = await fetch("/api/onboarding/email/send-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const response = await fetch("/api/onboarding/email/send-otp", { method: "POST" });
       const data = await response.json();
       if (!response.ok) {
         setToast(data.message || "Unable to send OTP");
         return;
       }
-      setDemoOtp(data.demoOtp);
-      setOtp(data.demoOtp);
-      setToast(successMessage);
+      setToast(data.message || "OTP sent to saved email");
     } catch {
       setToast("Unable to send OTP");
     }
@@ -2918,12 +3447,11 @@ export function OnboardingEmailPage() {
         <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-600">
           <p>Name: {user?.name ?? "Loading..."}</p>
           <p>Campus ID: {user?.campusId ?? "Loading..."}</p>
+          <p>Saved email: {email || "Contact admin"}</p>
         </div>
         <div className="mt-5 grid gap-3">
-          <input value={email} onChange={(event) => setEmail(event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Email address" type="email" />
-          <Button onClick={() => { void sendOtp("Email saved. Demo OTP generated"); }}>Save Email</Button>
-          <Button variant="outline" onClick={() => { void sendOtp(); }}>Send Verification OTP</Button>
-          {demoOtp ? <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-black text-emerald-700">Demo OTP: {demoOtp}</div> : null}
+          <input value={email} readOnly className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-600 outline-none" placeholder="Saved email" type="email" />
+          <Button onClick={() => { void sendOtp(); }}>Send OTP to Email</Button>
           <input value={otp} onChange={(event) => setOtp(event.target.value)} className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10" placeholder="Enter OTP" />
           <Button variant="outline" onClick={() => { void verifyOtp(); }}>Verify Email</Button>
         </div>
